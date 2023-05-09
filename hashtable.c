@@ -6,9 +6,14 @@
 #define INITIAL_CAPACITY 16
 #define MIN_CAPACITY 16
 
+#define EMPTY 0
+#define BUSY 1
+#define DELETED 2
+
 typedef struct {
   size_t key;
   void *value;
+  char state;
 } HashItem;
 
 typedef struct {
@@ -18,6 +23,8 @@ typedef struct {
 } HashTable;
 
 size_t hash_fn(size_t key) { return key; }
+
+size_t probe_sequence(size_t start, size_t i) { return start + i; }
 
 HashTable hash_table_new(size_t capacity) {
   HashTable hash_table;
@@ -37,31 +44,35 @@ HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity);
 
 void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
                                   void *value) {
+  // TODO: Resize if too small
   assert(hash_table->count < hash_table->capacity);
 
-  size_t cursor = hash_fn(key) % hash_table->capacity;
-  size_t init_cursor = cursor;
-  while (1) {
+  size_t cursor;
+  size_t init_cursor = hash_fn(key);
+  // Try at most hash_table->capacity times. This is a safeguard to avoid an
+  // infinite loop. It may be possible to hit a free slot after
+  // n > hash_table->capacity tries if using a non-naive probing sequence, but
+  // we ignore that possibility
+  for (size_t i = 0; i < hash_table->capacity; i++) {
+    cursor = probe_sequence(init_cursor, i) % hash_table->capacity;
     if (hash_table->items[cursor].key == key &&
-        hash_table->items[cursor].value != NULL) {
+        hash_table->items[cursor].state == BUSY) {
       // Existing item, overwrite
       hash_table->items[cursor].value = value;
       return;
     }
-    if (hash_table->items[cursor].value == NULL) {
+    if (hash_table->items[cursor].state == EMPTY ||
+        hash_table->items[cursor].state == DELETED) {
       // Empty slot
-      // printf("Inserted item after %d collisions\n",
-      //       mod(cursor - init_cursor, hash_table->capacity));
+      // printf("Inserted item after %zu collisions\n", i);
       hash_table->items[cursor].key = key;
       hash_table->items[cursor].value = value;
+      hash_table->items[cursor].state = BUSY;
       hash_table->count++;
       return;
     }
-    cursor = (cursor + 1) % hash_table->capacity;
-    if (cursor == init_cursor) {
-      assert(0 && "Unreachable");
-    }
   }
+  assert(0 && "FATAL: Inserting into hash table failed");
 }
 
 HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity) {
@@ -70,7 +81,7 @@ HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity) {
   printf("Resizing from capacity %zu to %zu (count is %zu)\n",
          hash_table->capacity, new_hash_table.capacity, hash_table->count);
   for (size_t i = 0; i < hash_table->capacity; i++) {
-    if (hash_table->items[i].value != NULL) {
+    if (hash_table->items[i].state == BUSY) {
       hash_table_insert_unbalanced(&new_hash_table, hash_table->items[i].key,
                                    hash_table->items[i].value);
     }
@@ -94,22 +105,20 @@ void hash_table_insert(HashTable *hash_table, size_t key, void *value) {
 }
 
 void hash_table_delete_unbalanced(HashTable *hash_table, size_t key) {
-  size_t cursor = hash_fn(key) % hash_table->capacity;
-  size_t init_cursor = cursor;
-  while (1) {
+  size_t cursor;
+  size_t init_cursor = hash_fn(key);
+  for (size_t i = 0; i < hash_table->capacity; i++) {
+    cursor = probe_sequence(init_cursor, i) % hash_table->capacity;
     if (hash_table->items[cursor].key == key &&
-        hash_table->items[cursor].value != NULL) {
+        hash_table->items[cursor].state == BUSY) {
       hash_table->items[cursor].key = 0;
       hash_table->items[cursor].value = NULL;
+      hash_table->items[cursor].state = DELETED;
       hash_table->count--;
       return;
     }
-    // if (hash_table->items[cursor].value == NULL) {
-    //   // Hit empty slot, therefore the key doesn't exist
-    //   return;
-    // }
-    cursor = (cursor + 1) % hash_table->capacity;
-    if (cursor == init_cursor) {
+    if (hash_table->items[cursor].state == EMPTY) {
+      // Hit end of potential probing sequence, therefore the key doesn't exist
       return;
     }
   }
@@ -121,25 +130,24 @@ void hash_table_delete(HashTable *hash_table, size_t key) {
 }
 
 int hash_table_get(const HashTable *hash_table, size_t key, void **result) {
-  size_t cursor = hash_fn(key) % hash_table->capacity;
-  size_t init_cursor = cursor;
-  while (1) {
+  size_t cursor;
+  size_t init_cursor = hash_fn(key);
+  for (size_t i = 0; i < hash_table->capacity; i++) {
+    cursor = probe_sequence(init_cursor, i) % hash_table->capacity;
     if (hash_table->items[cursor].key == key &&
-        hash_table->items[cursor].value != NULL) {
+        hash_table->items[cursor].state == BUSY) {
       if (result != NULL) {
         *result = hash_table->items[cursor].value;
       }
       return 1;
     }
-    if (hash_table->items[cursor].value == NULL) {
-      // Hit empty slot, therefore the key doesn't exist
-      return 0;
-    }
-    cursor = (cursor + 1) % hash_table->capacity;
-    if (cursor == init_cursor) {
+    if (hash_table->items[cursor].state == EMPTY) {
+      // Hit end of potential probing sequence, therefore the key doesn't exist
+      printf("Hit empty slot, ending probe\n");
       return 0;
     }
   }
+  return 0;
 }
 
 int hash_table_collect(const HashTable *hash_table, HashItem **items,
@@ -151,7 +159,7 @@ int hash_table_collect(const HashTable *hash_table, HashItem **items,
   *count = hash_table->count;
   int cursor = 0;
   for (size_t i = 0; i < hash_table->capacity; i++) {
-    if (hash_table->items[i].value != NULL) {
+    if (hash_table->items[i].state == BUSY) {
       (*items)[cursor] = hash_table->items[i];
       cursor++;
     }
@@ -163,35 +171,36 @@ int hash_table_contains(const HashTable *hash_table, size_t key) {
   return hash_table_get(hash_table, key, NULL);
 }
 
-void hash_table_print(const HashTable *hash_table) {
+void hash_table_debug_print(const HashTable *hash_table) {
   printf("Table with %zu items:\n", hash_table->count);
   for (size_t i = 0; i < hash_table->capacity; i++) {
-    if (hash_table->items[i].value == NULL) {
-      continue;
+    if (hash_table->items[i].state == BUSY) {
+      printf("\t[%zu] %zu\t%p\n", i, hash_table->items[i].key,
+             hash_table->items[i].value);
     }
-    printf("\t[%zu] %zu\t%p\n", i, hash_table->items[i].key,
-           hash_table->items[i].value);
+    if (hash_table->items[i].state == DELETED) {
+      printf("\t[%zu] %zu\t%p\t(deleted)\n", i, hash_table->items[i].key,
+             hash_table->items[i].value);
+    }
   }
 }
 
 int main() {
   HashTable t = hash_table_new(INITIAL_CAPACITY);
-  for (size_t i = 0; i < 5; i++) {
+  for (size_t i = 0; i < 10; i++) {
     hash_table_insert(&t, i << 5, (void *)(i << 16 | 0xcafe));
   }
-  size_t key = 3 << 5;
-  // void *result;
-  // if (hash_table_get(&t, key, &result)) {
-  //   printf("Value at key %zu: %p\n", key, result);
-  // } else {
-  //   fprintf(stderr, "No key %zu found\n", key);
-  // }
-  // hash_table_delete(&t, key);
-  // printf("Table has value %zu: %s\n", key,
-  //       hash_table_contains(&t, key) ? "yes" : "no");
+  hash_table_delete(&t, 0);
+  hash_table_delete(&t, 32);
+
+  hash_table_debug_print(&t);
+
+  size_t key = 2 << 5;
+  printf("Table has value %zu: %s\n", key,
+         hash_table_contains(&t, key) ? "yes" : "no");
+
   HashItem *items;
   size_t count;
-
   if (hash_table_collect(&t, &items, &count)) {
     printf("Collected hash table items:\n");
     for (size_t i = 0; i < count; i++) {
@@ -200,7 +209,7 @@ int main() {
   } else {
     fprintf(stdout, "Failed to collect hash table items\n");
   }
-
   free(items);
+
   hash_table_free(&t);
 }
