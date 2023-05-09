@@ -47,8 +47,9 @@ HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity);
 
 void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
                                   void *value) {
-  // TODO: Resize if too small
-  assert(hash_table->count < hash_table->capacity);
+  if (hash_table->count >= hash_table->capacity) {
+    *hash_table = hash_table_resize(hash_table, hash_table->capacity * 2);
+  }
 
   size_t cursor;
   size_t init_cursor = hash_fn(key);
