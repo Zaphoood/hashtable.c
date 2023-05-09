@@ -1,9 +1,10 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define INITIAL_CAPACITY 16
+#define INITIAL_CAPACITY 31
 #define MIN_CAPACITY 16
 
 #define EMPTY 0
@@ -30,6 +31,25 @@ size_t probe_sequence(size_t start, size_t i) {
   return start + i;
 }
 
+/* Find the smallest prime p for which start <= p */
+size_t next_prime(size_t start) {
+  size_t end;
+  int is_prime;
+  for (size_t i = start;; i++) {
+    end = (size_t)sqrtf((float)start) + 1;
+    is_prime = 1;
+    for (size_t j = 2; j <= end; j++) {
+      if (i % j == 0) {
+        is_prime = 0;
+        break;
+      }
+    }
+    if (is_prime) {
+      return i;
+    }
+  }
+}
+
 HashTable hash_table_new(size_t capacity) {
   HashTable hash_table;
   hash_table.items = malloc(capacity * sizeof(HashItem));
@@ -49,7 +69,8 @@ HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity);
 void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
                                   void *value) {
   if (hash_table->count >= hash_table->capacity) {
-    *hash_table = hash_table_resize(hash_table, hash_table->capacity * 2);
+    *hash_table =
+        hash_table_resize(hash_table, next_prime(hash_table->capacity * 2));
   }
 
   size_t cursor;
@@ -96,10 +117,12 @@ HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity) {
 
 void hash_table_balance_size(HashTable *hash_table) {
   if (hash_table->count > hash_table->capacity / 2) {
-    *hash_table = hash_table_resize(hash_table, hash_table->capacity * 2);
+    *hash_table =
+        hash_table_resize(hash_table, next_prime(hash_table->capacity * 2));
   } else if (hash_table->count < hash_table->capacity / 4 &&
              hash_table->capacity > MIN_CAPACITY * 2) {
-    *hash_table = hash_table_resize(hash_table, hash_table->capacity / 2);
+    *hash_table =
+        hash_table_resize(hash_table, next_prime(hash_table->capacity / 2));
   }
 }
 
@@ -192,7 +215,7 @@ int main() {
   HashTable t = hash_table_new(INITIAL_CAPACITY);
   for (size_t i = 0; i < 100; i++) {
     // hash_table_insert(&t, i << 5, (void *)(i << 16 | 0xcafe));
-    hash_table_insert_unbalanced(&t, i << 5, (void *)(i << 16 | 0xcafe));
+    hash_table_insert_unbalanced(&t, i << 10, (void *)(i << 16 | 0xcafe));
   }
 
   hash_table_free(&t);
