@@ -24,7 +24,10 @@ typedef struct {
 
 size_t hash_fn(size_t key) { return key; }
 
-size_t probe_sequence(size_t start, size_t i) { return start + i; }
+size_t probe_sequence(size_t start, size_t i) {
+  i++;
+  return (start + i * i) ^ (start >> i);
+}
 
 HashTable hash_table_new(size_t capacity) {
   HashTable hash_table;
@@ -63,8 +66,7 @@ void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
     }
     if (hash_table->items[cursor].state == EMPTY ||
         hash_table->items[cursor].state == DELETED) {
-      // Empty slot
-      // printf("Inserted item after %zu collisions\n", i);
+      printf("Inserted item after %zu collisions\n", i);
       hash_table->items[cursor].key = key;
       hash_table->items[cursor].value = value;
       hash_table->items[cursor].state = BUSY;
@@ -143,7 +145,6 @@ int hash_table_get(const HashTable *hash_table, size_t key, void **result) {
     }
     if (hash_table->items[cursor].state == EMPTY) {
       // Hit end of potential probing sequence, therefore the key doesn't exist
-      printf("Hit empty slot, ending probe\n");
       return 0;
     }
   }
@@ -187,29 +188,9 @@ void hash_table_debug_print(const HashTable *hash_table) {
 
 int main() {
   HashTable t = hash_table_new(INITIAL_CAPACITY);
-  for (size_t i = 0; i < 10; i++) {
+  for (size_t i = 0; i < 100; i++) {
     hash_table_insert(&t, i << 5, (void *)(i << 16 | 0xcafe));
   }
-  hash_table_delete(&t, 0);
-  hash_table_delete(&t, 32);
-
-  hash_table_debug_print(&t);
-
-  size_t key = 2 << 5;
-  printf("Table has value %zu: %s\n", key,
-         hash_table_contains(&t, key) ? "yes" : "no");
-
-  HashItem *items;
-  size_t count;
-  if (hash_table_collect(&t, &items, &count)) {
-    printf("Collected hash table items:\n");
-    for (size_t i = 0; i < count; i++) {
-      printf("\t[%zu] %zu\t%p\n", i, items[i].key, items[i].value);
-    }
-  } else {
-    fprintf(stdout, "Failed to collect hash table items\n");
-  }
-  free(items);
 
   hash_table_free(&t);
 }
