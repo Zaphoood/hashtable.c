@@ -25,8 +25,9 @@ typedef struct {
 size_t hash_fn(size_t key) { return key; }
 
 size_t probe_sequence(size_t start, size_t i) {
-  i++;
-  return (start + i * i) ^ (start >> i);
+  // i++;
+  // return (start + i * i) ^ (start >> i);
+  return start + i;
 }
 
 HashTable hash_table_new(size_t capacity) {
@@ -190,7 +191,8 @@ void hash_table_debug_print(const HashTable *hash_table) {
 int main() {
   HashTable t = hash_table_new(INITIAL_CAPACITY);
   for (size_t i = 0; i < 100; i++) {
-    hash_table_insert(&t, i << 5, (void *)(i << 16 | 0xcafe));
+    // hash_table_insert(&t, i << 5, (void *)(i << 16 | 0xcafe));
+    hash_table_insert_unbalanced(&t, i << 5, (void *)(i << 16 | 0xcafe));
   }
 
   hash_table_free(&t);
