@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INITIAL_CAPACITY 31
+#define INITIAL_CAPACITY 31 // Should be a prime number
 #define MIN_CAPACITY 16
 
 #define EMPTY 0
@@ -64,13 +64,17 @@ int mod(int a, int b) { return (a % b + b) % b; }
 
 void hash_table_free(const HashTable *hash_table) { free(hash_table->items); }
 
+/* Resize a hash table to requested size */
 HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity);
+
+/* Resize a hash table to next prime which can hold the requested size */
+HashTable hash_table_resize_prime(const HashTable *hash_table,
+                                  size_t new_capacity);
 
 void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
                                   void *value) {
   if (hash_table->count >= hash_table->capacity) {
-    *hash_table =
-        hash_table_resize(hash_table, next_prime(hash_table->capacity * 2));
+    *hash_table = hash_table_resize_prime(hash_table, hash_table->capacity * 2);
   }
 
   size_t cursor;
@@ -89,15 +93,20 @@ void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
     }
     if (hash_table->items[cursor].state == EMPTY ||
         hash_table->items[cursor].state == DELETED) {
-      printf("Inserted item after %zu collisions\n", i);
       hash_table->items[cursor].key = key;
       hash_table->items[cursor].value = value;
       hash_table->items[cursor].state = BUSY;
+      printf("Inserted after %zu collisions\n", i);
       hash_table->count++;
       return;
     }
   }
   assert(0 && "FATAL: Inserting into hash table failed");
+}
+
+HashTable hash_table_resize_prime(const HashTable *hash_table,
+                                  size_t new_capacity) {
+  return hash_table_resize(hash_table, next_prime(new_capacity));
 }
 
 HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity) {
@@ -117,12 +126,10 @@ HashTable hash_table_resize(const HashTable *hash_table, size_t new_capacity) {
 
 void hash_table_balance_size(HashTable *hash_table) {
   if (hash_table->count > hash_table->capacity / 2) {
-    *hash_table =
-        hash_table_resize(hash_table, next_prime(hash_table->capacity * 2));
+    *hash_table = hash_table_resize_prime(hash_table, hash_table->capacity * 2);
   } else if (hash_table->count < hash_table->capacity / 4 &&
              hash_table->capacity > MIN_CAPACITY * 2) {
-    *hash_table =
-        hash_table_resize(hash_table, next_prime(hash_table->capacity / 2));
+    *hash_table = hash_table_resize_prime(hash_table, hash_table->capacity / 2);
   }
 }
 
@@ -214,7 +221,6 @@ void hash_table_debug_print(const HashTable *hash_table) {
 int main() {
   HashTable t = hash_table_new(INITIAL_CAPACITY);
   for (size_t i = 0; i < 100; i++) {
-    // hash_table_insert(&t, i << 5, (void *)(i << 16 | 0xcafe));
     hash_table_insert_unbalanced(&t, i << 10, (void *)(i << 16 | 0xcafe));
   }
 
