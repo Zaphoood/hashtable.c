@@ -25,13 +25,9 @@ typedef struct {
 
 size_t hash_fn(size_t key) { return key; }
 
-size_t probe_sequence(size_t start, size_t i) {
-  // i++;
-  // return (start + i * i) ^ (start >> i);
-  return start + i;
-}
+size_t probe_sequence(size_t start, size_t i) { return start + i; }
 
-/* Find the smallest prime p for which start <= p */
+/* Find the smallest prime p >= start */
 size_t next_prime(size_t start) {
   size_t end;
   int is_prime;
@@ -81,7 +77,7 @@ void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
   size_t init_cursor = hash_fn(key);
   // Try at most hash_table->capacity times. This is a safeguard to avoid an
   // infinite loop. It may be possible to hit a free slot after
-  // n > hash_table->capacity tries if using a non-naive probing sequence, but
+  // n > hash_table->capacity tries if using a non-linear probe sequence, but
   // we ignore that possibility
   for (size_t i = 0; i < hash_table->capacity; i++) {
     cursor = probe_sequence(init_cursor, i) % hash_table->capacity;
@@ -89,6 +85,9 @@ void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
         hash_table->items[cursor].state == BUSY) {
       // Existing item, overwrite
       hash_table->items[cursor].value = value;
+      if (i > 0) {
+        printf("Replaced after %zu collisions\n", i);
+      }
       return;
     }
     if (hash_table->items[cursor].state == EMPTY ||
@@ -96,7 +95,9 @@ void hash_table_insert_unbalanced(HashTable *hash_table, size_t key,
       hash_table->items[cursor].key = key;
       hash_table->items[cursor].value = value;
       hash_table->items[cursor].state = BUSY;
-      printf("Inserted after %zu collisions\n", i);
+      if (i > 0) {
+        printf("Inserted after %zu collisions\n", i);
+      }
       hash_table->count++;
       return;
     }
@@ -152,7 +153,7 @@ void hash_table_delete_unbalanced(HashTable *hash_table, size_t key) {
       return;
     }
     if (hash_table->items[cursor].state == EMPTY) {
-      // Hit end of potential probing sequence, therefore the key doesn't exist
+      // Hit end of potential probe sequence, therefore the key doesn't exist
       return;
     }
   }
@@ -176,7 +177,7 @@ int hash_table_get(const HashTable *hash_table, size_t key, void **result) {
       return 1;
     }
     if (hash_table->items[cursor].state == EMPTY) {
-      // Hit end of potential probing sequence, therefore the key doesn't exist
+      // Hit end of potential probe sequence, therefore the key doesn't exist
       return 0;
     }
   }
@@ -221,8 +222,12 @@ void hash_table_debug_print(const HashTable *hash_table) {
 int main() {
   HashTable t = hash_table_new(INITIAL_CAPACITY);
   for (size_t i = 0; i < 100; i++) {
-    hash_table_insert_unbalanced(&t, i << 10, (void *)(i << 16 | 0xcafe));
+    hash_table_insert(&t, i, (void *)(i << 16 | 0xcafe));
   }
+
+  size_t key = 30;
+  printf("Contains key %zu? %s\n", key,
+         hash_table_contains(&t, key) ? "Yes" : "No");
 
   hash_table_free(&t);
 }
