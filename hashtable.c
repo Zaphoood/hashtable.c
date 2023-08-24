@@ -221,6 +221,7 @@ void hash_table_debug_print(const HashTable *hash_table) {
 
 int main() {
   HashTable t = hash_table_new(INITIAL_CAPACITY);
+
   for (size_t i = 0; i < 100; i++) {
     hash_table_insert(&t, i, (void *)(i << 16 | 0xcafe));
   }
